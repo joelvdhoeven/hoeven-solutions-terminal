@@ -1,6 +1,6 @@
 # Hoeven Solutions Terminal
 
-A modern, cross-platform terminal emulator built as a weekend project. Inspired by tools like Warp and BridgeSpace — multiple workspaces, pane splitting, themes, and Warp-style command blocks, all in a lightweight Electron app.
+A modern, cross-platform terminal emulator built as a weekend project. Inspired by tools like Warp — multiple workspaces, pane splitting, themes, and Warp-style command blocks, all in a lightweight Electron app.
 
 ## Features
 

@@ -15,6 +15,7 @@ interface WorkspaceTabProps {
   onSelect: (id: string) => void
   onAdd: (cols: number, rows: number) => void
   onClose: (id: string) => void
+  onRename: (id: string, name: string) => void
 }
 
 interface GridPos { top: number; right: number }
@@ -49,17 +50,17 @@ function TemplateGrid({
         right: pos.right,
         background: theme.headerBg,
         border: `1px solid ${theme.borderColor}`,
-        borderRadius: '6px',
-        padding: '8px',
+        borderRadius: '8px',
+        padding: '10px',
         zIndex: 9999,
-        boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
         userSelect: 'none'
       }}
     >
-      <div style={{ color: theme.mutedText, fontSize: '11px', marginBottom: '6px', textAlign: 'center' }}>
+      <div style={{ color: theme.mutedText, fontSize: '11px', marginBottom: '8px', textAlign: 'center', letterSpacing: '0.05em' }}>
         {hovered[0]}×{hovered[1]}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 18px)', gap: '3px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 20px)', gap: '4px' }}>
         {Array.from({ length: 16 }, (_, i) => {
           const col = (i % 4) + 1
           const row = Math.floor(i / 4) + 1
@@ -70,9 +71,9 @@ function TemplateGrid({
               onMouseEnter={() => setHovered([col, row])}
               onClick={() => { onSelect(hovered[0], hovered[1]); onClose() }}
               style={{
-                width: '18px',
-                height: '18px',
-                borderRadius: '3px',
+                width: '20px',
+                height: '20px',
+                borderRadius: '4px',
                 background: active ? theme.accentColor : theme.borderColor,
                 cursor: 'pointer',
                 transition: 'background 0.05s'
@@ -91,22 +92,53 @@ export function WorkspaceTab({
   activeId,
   onSelect,
   onAdd,
-  onClose
+  onClose,
+  onRename
 }: WorkspaceTabProps): React.JSX.Element {
   const { theme } = useTheme()
   const [showGrid, setShowGrid] = useState(false)
   const btnRef = useRef<HTMLButtonElement>(null)
   const [gridPos, setGridPos] = useState<GridPos>({ top: 40, right: 8 })
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState('')
+  const editInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (editingId && editInputRef.current) editInputRef.current.select()
+  }, [editingId])
+
+  const startEdit = (ws: Workspace): void => {
+    setEditingId(ws.id)
+    setEditValue(ws.name)
+  }
+
+  const commitEdit = (): void => {
+    if (editingId && editValue.trim()) onRename(editingId, editValue.trim())
+    setEditingId(null)
+  }
 
   const openGrid = (): void => {
     if (btnRef.current) {
       const rect = btnRef.current.getBoundingClientRect()
-      setGridPos({
-        top: rect.bottom + 4,
-        right: window.innerWidth - rect.right
-      })
+      setGridPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
     }
     setShowGrid(true)
+  }
+
+  const winCtrlBtn: React.CSSProperties = {
+    background: 'none',
+    border: 'none',
+    color: theme.mutedText,
+    cursor: 'pointer',
+    fontSize: '12px',
+    width: '40px',
+    height: '36px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    WebkitAppRegion: 'no-drag' as any,
+    transition: 'background 0.1s, color 0.1s'
   }
 
   return (
@@ -118,91 +150,155 @@ export function WorkspaceTab({
         display: 'flex',
         alignItems: 'center',
         borderBottom: `1px solid ${theme.borderColor}`,
-        padding: '0 4px',
-        gap: '2px'
+        WebkitAppRegion: 'drag' as any,
+        userSelect: 'none'
       }}
     >
+      {/* App icon / branding */}
+      <div style={{
+        width: '36px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        WebkitAppRegion: 'no-drag' as any,
+        opacity: 0.5,
+        fontSize: '14px'
+      }}>
+        ⬡
+      </div>
+
       {/* Scrollable tabs area */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '2px', overflowX: 'auto', overflowY: 'hidden', flex: 1 }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '2px',
+        overflowX: 'auto',
+        overflowY: 'hidden',
+        flex: 1,
+        WebkitAppRegion: 'no-drag' as any,
+        scrollbarWidth: 'none'
+      }}>
         {workspaces.map((ws) => {
           const isActive = ws.id === activeId
+          const isEditing = editingId === ws.id
           return (
             <div
               key={ws.id}
-              onClick={() => onSelect(ws.id)}
+              className={isActive ? undefined : 'hs-tab'}
+              onClick={() => !isEditing && onSelect(ws.id)}
+              onDoubleClick={() => startEdit(ws)}
+              onAuxClick={(e) => { if (e.button === 1) onClose(ws.id) }}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                padding: '0 10px',
+                padding: '0 8px 0 10px',
                 height: '28px',
                 borderRadius: '4px',
-                cursor: 'pointer',
+                cursor: isEditing ? 'default' : 'pointer',
                 background: isActive ? theme.background : 'transparent',
                 color: isActive ? theme.textColor : theme.mutedText,
                 fontSize: '12px',
                 whiteSpace: 'nowrap',
                 userSelect: 'none',
                 border: isActive ? `1px solid ${ws.color ?? theme.borderColor}` : '1px solid transparent',
-                transition: 'background 0.1s'
+                transition: 'background 0.1s',
+                flexShrink: 0
               }}
             >
-              <span
-                style={{
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  background: ws.color ?? theme.accentColor,
-                  flexShrink: 0,
-                  display: 'inline-block'
-                }}
-              />
-              <span>{ws.name}</span>
-              {workspaces.length > 1 && (
-                <button
-                  onClick={(e) => {
+              <span style={{
+                width: '8px', height: '8px', borderRadius: '50%',
+                background: ws.color ?? theme.accentColor,
+                flexShrink: 0, display: 'inline-block'
+              }} />
+              {isEditing ? (
+                <input
+                  ref={editInputRef}
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onBlur={commitEdit}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') commitEdit()
+                    else if (e.key === 'Escape') setEditingId(null)
                     e.stopPropagation()
-                    onClose(ws.id)
                   }}
+                  onClick={(e) => e.stopPropagation()}
                   style={{
-                    background: 'none',
-                    border: 'none',
-                    color: theme.mutedText,
-                    cursor: 'pointer',
-                    fontSize: '11px',
-                    padding: '0',
-                    lineHeight: 1,
-                    opacity: 0.6
+                    background: 'transparent', border: 'none', outline: 'none',
+                    color: theme.textColor, fontSize: '12px',
+                    width: `${Math.max(editValue.length, 4)}ch`, padding: 0
                   }}
-                >
-                  ✕
-                </button>
+                />
+              ) : (
+                <span>{ws.name}</span>
+              )}
+              {workspaces.length > 1 && !isEditing && (
+                <button
+                  className="hs-btn hs-btn-close"
+                  onClick={(e) => { e.stopPropagation(); onClose(ws.id) }}
+                  style={{
+                    background: 'none', border: 'none', color: theme.mutedText,
+                    cursor: 'pointer', fontSize: '11px', padding: '2px 3px',
+                    lineHeight: 1, opacity: 0.6, borderRadius: '3px'
+                  }}
+                >✕</button>
               )}
             </div>
           )
         })}
       </div>
 
+      {/* New workspace button */}
       <button
         ref={btnRef}
+        className="hs-btn"
         onClick={openGrid}
-        title="New workspace (click for layout picker)"
+        title="New workspace"
         style={{
           background: 'none',
-          border: `1px solid ${theme.borderColor}`,
-          color: theme.textColor,
+          border: 'none',
+          color: theme.mutedText,
           cursor: 'pointer',
-          fontSize: '16px',
-          padding: '0 10px',
-          height: '28px',
-          borderRadius: '4px',
-          lineHeight: 1,
+          fontSize: '18px',
+          width: '36px',
+          height: '36px',
           display: 'flex',
           alignItems: 'center',
-          flexShrink: 0
+          justifyContent: 'center',
+          flexShrink: 0,
+          WebkitAppRegion: 'no-drag' as any,
+          borderRadius: 0,
+          lineHeight: 1
         }}
       >
         +
+      </button>
+
+      {/* Window controls */}
+      <button
+        className="hs-btn"
+        onClick={() => window.windowControls.minimize()}
+        title="Minimize"
+        style={winCtrlBtn}
+      >
+        ─
+      </button>
+      <button
+        className="hs-btn"
+        onClick={() => window.windowControls.maximize()}
+        title="Maximize / Restore"
+        style={winCtrlBtn}
+      >
+        ▭
+      </button>
+      <button
+        className="hs-btn-close-win"
+        onClick={() => window.windowControls.close()}
+        title="Close"
+        style={{ ...winCtrlBtn, borderRadius: 0 }}
+      >
+        ✕
       </button>
 
       {showGrid && (

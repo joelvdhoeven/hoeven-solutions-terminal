@@ -1,12 +1,14 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join, basename } from 'path'
-import { writeFileSync, mkdirSync, rmSync } from 'fs'
+import { writeFileSync, mkdirSync, rmSync, appendFileSync, readFileSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import * as pty from 'node-pty'
 import icon from '../../resources/icon.png?asset'
 
 // Map of terminal id -> pty process
 const terminals = new Map<string, pty.IPty>()
+// Pending kill timers — cancelled if terminal reconnects within grace period (HMR)
+const killTimers = new Map<string, ReturnType<typeof setTimeout>>()
 let mainWindow: BrowserWindow | null = null
 let store: any = null
 
@@ -20,6 +22,7 @@ function createWindow(): void {
     width: 1400,
     height: 900,
     show: false,
+    frame: false,
     autoHideMenuBar: true,
     backgroundColor: '#1a1a1a',
     ...(process.platform === 'linux' ? { icon } : {}),
@@ -54,6 +57,14 @@ app.whenReady().then(async () => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  // IPC: Window controls
+  ipcMain.on('window:minimize', () => mainWindow?.minimize())
+  ipcMain.on('window:maximize', () => {
+    if (mainWindow?.isMaximized()) mainWindow.unmaximize()
+    else mainWindow?.maximize()
+  })
+  ipcMain.on('window:close', () => mainWindow?.close())
+
   // IPC: Session load
   ipcMain.handle('session:load', () => {
     return store?.get('session') ?? null
@@ -66,6 +77,23 @@ app.whenReady().then(async () => {
 
   // IPC: Create terminal
   ipcMain.handle('terminal:create', async (_event, id: string, cwd: string) => {
+    // Cancel pending kill if same terminal reconnects (HMR reload scenario)
+    if (killTimers.has(id)) {
+      clearTimeout(killTimers.get(id)!)
+      killTimers.delete(id)
+    }
+    // Reattach to existing pty if still alive
+    if (terminals.has(id)) {
+      const existing = terminals.get(id)!
+      // Send resize to trigger redraw in the reconnected xterm instance
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+          mainWindow.webContents.send('terminal:data', id, '\x1b[?2026h\x1b[r')
+        }
+      }, 100)
+      return { pid: existing.pid }
+    }
+
     let shell: string
     if (process.platform === 'win32') {
       // Try PowerShell 7 first, fall back to Windows PowerShell 5
@@ -151,14 +179,14 @@ app.whenReady().then(async () => {
     terminals.set(id, ptyProcess)
 
     ptyProcess.onData((data) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
         mainWindow.webContents.send('terminal:data', id, data)
       }
     })
 
     ptyProcess.onExit(({ exitCode }) => {
       terminals.delete(id)
-      if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
         mainWindow.webContents.send('terminal:exit', id, exitCode)
       }
     })
@@ -183,12 +211,34 @@ app.whenReady().then(async () => {
     }
   })
 
-  // IPC: Kill terminal
+  // IPC: Kill terminal — delayed to survive HMR remounts
   ipcMain.on('terminal:kill', (_event, id: string) => {
-    const ptyProcess = terminals.get(id)
-    if (ptyProcess) {
-      ptyProcess.kill()
-      terminals.delete(id)
+    if (killTimers.has(id)) clearTimeout(killTimers.get(id)!)
+    const timer = setTimeout(() => {
+      killTimers.delete(id)
+      const ptyProcess = terminals.get(id)
+      if (ptyProcess) {
+        ptyProcess.kill()
+        terminals.delete(id)
+      }
+    }, 2000)
+    killTimers.set(id, timer)
+  })
+
+  // IPC: Append receipt to NDJSON ledger
+  ipcMain.handle('receipt:append', (_event, receipt: object) => {
+    const receiptsPath = join(app.getPath('userData'), 'receipts.ndjson')
+    appendFileSync(receiptsPath, JSON.stringify(receipt) + '\n')
+  })
+
+  // IPC: Load receipts from ledger
+  ipcMain.handle('receipt:load', () => {
+    const receiptsPath = join(app.getPath('userData'), 'receipts.ndjson')
+    try {
+      const content = readFileSync(receiptsPath, 'utf-8')
+      return content.trim().split('\n').filter(Boolean).slice(-200).map((l) => JSON.parse(l))
+    } catch {
+      return []
     }
   })
 
@@ -200,6 +250,8 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => {
+  killTimers.forEach((t) => clearTimeout(t))
+  killTimers.clear()
   terminals.forEach((p) => p.kill())
   terminals.clear()
   if (process.platform !== 'darwin') {

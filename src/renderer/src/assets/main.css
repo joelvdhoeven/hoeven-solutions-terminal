@@ -4,6 +4,63 @@
   padding: 0;
 }
 
+/* ── Interactive UI helpers ───────────────────────────── */
+
+/* Generic icon/text button */
+.hs-btn {
+  transition: background 0.12s, opacity 0.12s !important;
+}
+.hs-btn:hover {
+  background: rgba(128, 128, 128, 0.18) !important;
+  opacity: 1 !important;
+}
+
+/* Close/destructive button */
+.hs-btn-close:hover {
+  background: rgba(244, 71, 71, 0.15) !important;
+  color: #f44747 !important;
+  opacity: 1 !important;
+}
+
+/* Workspace tab */
+.hs-tab {
+  transition: background 0.12s !important;
+}
+.hs-tab:hover {
+  background: rgba(128, 128, 128, 0.08) !important;
+}
+
+/* Window close button — red on hover */
+.hs-btn-close-win {
+  transition: background 0.12s, color 0.12s !important;
+}
+.hs-btn-close-win:hover {
+  background: #e81123 !important;
+  color: #fff !important;
+}
+
+/* Resize handle — highlight on hover */
+.hs-resize-handle {
+  transition: background 0.15s !important;
+}
+.hs-resize-handle:hover {
+  background: rgba(128, 128, 128, 0.5) !important;
+}
+
+/* Hide scrollbar on tab strip */
+.hs-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+/* Running terminal dot — gentle pulse */
+@keyframes hs-pulse {
+  0%, 100% { opacity: 1;   transform: scale(1);    }
+  50%       { opacity: 0.4; transform: scale(0.72); }
+}
+.hs-dot-running {
+  animation: hs-pulse 1.6s ease-in-out infinite;
+}
+
 html, body {
   width: 100%;
   height: 100%;

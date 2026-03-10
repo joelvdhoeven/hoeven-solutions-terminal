@@ -1,4 +1,14 @@
 import { useState, useCallback, useMemo } from 'react'
+
+function cwdBasename(cwd: string): string {
+  const parts = cwd.replace(/\\/g, '/').split('/')
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (parts[i]) return parts[i]
+  }
+  return cwd
+}
+
+type TerminalStatus = 'idle' | 'running' | 'done' | 'error'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { Terminal } from './Terminal'
 import { useTheme } from '../ThemeContext'
@@ -50,6 +60,17 @@ interface PaneTreeProps {
   onSplit: (id: string, direction: 'horizontal' | 'vertical') => void
   onClose: (id: string) => void
   canClose: boolean
+  termStatuses: Record<string, TerminalStatus>
+  onStatusChange: (termId: string, status: TerminalStatus) => void
+}
+
+function statusDotColor(status: TerminalStatus, theme: { terminal: { blue: string; green: string; red: string }; mutedText: string }): string {
+  switch (status) {
+    case 'running': return theme.terminal.blue
+    case 'done':    return theme.terminal.green
+    case 'error':   return theme.terminal.red
+    default:        return theme.mutedText
+  }
 }
 
 function PaneTree({
@@ -58,7 +79,9 @@ function PaneTree({
   onSetActive,
   onSplit,
   onClose,
-  canClose
+  canClose,
+  termStatuses,
+  onStatusChange
 }: PaneTreeProps): React.JSX.Element {
   const { theme } = useTheme()
 
@@ -81,6 +104,8 @@ function PaneTree({
                 onSplit={onSplit}
                 onClose={onClose}
                 canClose={pane.children!.length > 1}
+                termStatuses={termStatuses}
+                onStatusChange={onStatusChange}
               />
             </Panel>
           ]
@@ -88,10 +113,11 @@ function PaneTree({
             items.push(
               <PanelResizeHandle
                 key={`handle-${child.id}`}
+                className="hs-resize-handle"
                 style={{
                   ...resizeHandleStyle,
-                  width: pane.direction === 'horizontal' ? '4px' : '100%',
-                  height: pane.direction === 'vertical' ? '4px' : '100%',
+                  width: pane.direction === 'horizontal' ? '3px' : '100%',
+                  height: pane.direction === 'vertical' ? '3px' : '100%',
                   cursor: pane.direction === 'horizontal' ? 'col-resize' : 'row-resize'
                 }}
               />
@@ -104,6 +130,8 @@ function PaneTree({
   }
 
   const isActive = pane.id === activePaneId
+  const status = termStatuses[pane.terminalId] ?? 'idle'
+  const dotColor = statusDotColor(status, theme)
   const btnStyle: React.CSSProperties = {
     background: 'none',
     border: 'none',
@@ -141,11 +169,26 @@ function PaneTree({
           borderBottom: `1px solid ${theme.borderColor}`
         }}
       >
-        <span style={{ color: theme.mutedText, fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {pane.cwd || '~'}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', overflow: 'hidden', flex: 1, minWidth: 0 }}>
+          <span
+            className={status === 'running' ? 'hs-dot-running' : undefined}
+            title={status}
+            style={{
+              width: '7px', height: '7px', minWidth: '7px', borderRadius: '50%',
+              background: dotColor, display: 'inline-block', flexShrink: 0,
+              transition: 'background 0.3s'
+            }}
+          />
+          <span
+            title={pane.cwd || '~'}
+            style={{ color: theme.mutedText, fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          >
+            {pane.cwd ? cwdBasename(pane.cwd) : '~'}
+          </span>
+        </div>
         <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
           <button
+            className="hs-btn"
             title="Split vertical (Ctrl+\)"
             onClick={(e) => { e.stopPropagation(); onSplit(pane.id, 'horizontal') }}
             style={btnStyle}
@@ -153,6 +196,7 @@ function PaneTree({
             ⊟
           </button>
           <button
+            className="hs-btn"
             title="Split horizontal (Ctrl+-)"
             onClick={(e) => { e.stopPropagation(); onSplit(pane.id, 'vertical') }}
             style={btnStyle}
@@ -161,6 +205,7 @@ function PaneTree({
           </button>
           {canClose && (
             <button
+              className="hs-btn hs-btn-close"
               title="Close pane"
               onClick={(e) => { e.stopPropagation(); onClose(pane.id) }}
               style={{ ...btnStyle, color: '#f44747' }}
@@ -171,7 +216,12 @@ function PaneTree({
         </div>
       </div>
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        <Terminal id={pane.terminalId} cwd={pane.cwd} isActive={isActive} />
+        <Terminal
+          id={pane.terminalId}
+          cwd={pane.cwd}
+          isActive={isActive}
+          onStatusChange={(s) => onStatusChange(pane.terminalId, s)}
+        />
       </div>
     </div>
   )
@@ -256,8 +306,13 @@ export function PaneLayout({ workspaceId, cwd, templateCols = 1, templateRows = 
   const [root, setRoot] = useState<PaneConfig>(initialRoot)
   const [activePaneId, setActivePaneId] = useState<string>(() => findFirstLeaf(initialRoot).id)
   const [showOrchestrator, setShowOrchestrator] = useState(false)
+  const [termStatuses, setTermStatuses] = useState<Record<string, TerminalStatus>>({})
   const { getShortcut } = useShortcuts()
   const { theme } = useTheme()
+
+  const handleStatusChange = useCallback((termId: string, status: TerminalStatus) => {
+    setTermStatuses((prev) => prev[termId] === status ? prev : { ...prev, [termId]: status })
+  }, [])
 
   const handleSplit = useCallback(
     (paneId: string, direction: 'horizontal' | 'vertical') => {
@@ -309,6 +364,8 @@ export function PaneLayout({ workspaceId, cwd, templateCols = 1, templateRows = 
             onSplit={handleSplit}
             onClose={handleClose}
             canClose={false}
+            termStatuses={termStatuses}
+            onStatusChange={handleStatusChange}
           />
         </div>
         {showOrchestrator && <OrchestratorPane panes={leaves} />}
@@ -316,6 +373,7 @@ export function PaneLayout({ workspaceId, cwd, templateCols = 1, templateRows = 
 
       {/* Orchestrator toggle button — bottom-right overlay */}
       <button
+        className="hs-btn"
         title={showOrchestrator ? 'Close Orchestrator' : 'Open Orchestrator'}
         onClick={() => setShowOrchestrator((v) => !v)}
         style={{

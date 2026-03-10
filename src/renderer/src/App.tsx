@@ -83,6 +83,10 @@ function App({ initialSession }: AppProps): React.JSX.Element {
     [activeId]
   )
 
+  const renameWorkspace = useCallback((id: string, name: string) => {
+    setWorkspaces((prev) => prev.map((w) => (w.id === id ? { ...w, name } : w)))
+  }, [])
+
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
       const newWs = getShortcut('newWorkspace')
@@ -135,6 +139,7 @@ function App({ initialSession }: AppProps): React.JSX.Element {
         onSelect={setActiveId}
         onAdd={addWorkspace}
         onClose={closeWorkspace}
+        onRename={renameWorkspace}
       />
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         {workspaces.map((ws) => (

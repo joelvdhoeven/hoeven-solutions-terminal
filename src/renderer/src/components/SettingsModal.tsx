@@ -105,14 +105,16 @@ export function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Elemen
             Settings
           </span>
           <button
+            className="hs-btn hs-btn-close"
             onClick={onClose}
             style={{
               background: 'none',
               border: 'none',
               color: theme.mutedText,
               cursor: 'pointer',
-              fontSize: '16px',
-              padding: '0 4px'
+              fontSize: '14px',
+              padding: '4px 6px',
+              borderRadius: '4px'
             }}
           >
             ✕
@@ -136,6 +138,7 @@ export function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Elemen
               {THEMES.map((t) => (
                 <button
                   key={t.id}
+                  className="hs-btn"
                   onClick={() => setThemeId(t.id)}
                   style={{
                     display: 'flex',
@@ -146,7 +149,8 @@ export function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Elemen
                     border: `1px solid ${t.id === themeId ? theme.accentColor : theme.borderColor}`,
                     borderRadius: '6px',
                     cursor: 'pointer',
-                    textAlign: 'left'
+                    textAlign: 'left',
+                    width: '100%'
                   }}
                 >
                   {/* Color preview dots */}
@@ -169,6 +173,7 @@ export function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Elemen
               {shortcuts.map((s) => (
                 <div
                   key={s.id}
+                  className="hs-btn"
                   style={{
                     display: 'flex',
                     alignItems: 'center',

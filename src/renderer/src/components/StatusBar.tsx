@@ -16,35 +16,45 @@ export function StatusBar({ workspaceCount, activeWorkspaceName, onOpenSettings 
         background: theme.statusBarBg,
         display: 'flex',
         alignItems: 'center',
-        padding: '0 12px',
-        gap: '16px',
+        padding: '0 10px',
+        gap: '12px',
         fontSize: '11px',
         color: '#ffffff',
         userSelect: 'none'
       }}
     >
-      <span>Hoeven Solutions</span>
+      <span style={{ fontWeight: 600, letterSpacing: '0.03em' }}>Hoeven Solutions</span>
+      <span style={{ opacity: 0.7 }}>·</span>
       <span style={{ opacity: 0.8 }}>{activeWorkspaceName}</span>
-      <span style={{ marginLeft: 'auto', opacity: 0.7 }}>
-        {workspaceCount} workspace{workspaceCount !== 1 ? 's' : ''}
-      </span>
-      <span style={{ opacity: 0.7 }}>Ctrl+T new · Ctrl+W close · Ctrl+\ split · Ctrl+- hsplit</span>
-      <button
-        onClick={onOpenSettings}
-        title="Settings"
-        style={{
-          background: 'none',
-          border: 'none',
-          color: '#ffffff',
-          cursor: 'pointer',
-          fontSize: '14px',
-          padding: '0',
-          opacity: 0.8,
-          lineHeight: 1
-        }}
-      >
-        ⚙
-      </button>
+      <span style={{ opacity: 0.5 }}>{workspaceCount} workspace{workspaceCount !== 1 ? 's' : ''}</span>
+
+      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '12px' }}>
+        {/* Shortcut hints as compact badges */}
+        <span
+          style={{ opacity: 0.45, fontSize: '10px', letterSpacing: '0.02em' }}
+          title="Ctrl+T new · Ctrl+W close · Ctrl+\ split · Ctrl+- hsplit"
+        >
+          ⌨ shortcuts
+        </span>
+        <button
+          className="hs-btn"
+          onClick={onOpenSettings}
+          title="Settings"
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#ffffff',
+            cursor: 'pointer',
+            fontSize: '13px',
+            padding: '2px 4px',
+            opacity: 0.75,
+            lineHeight: 1,
+            borderRadius: '3px'
+          }}
+        >
+          ⚙
+        </button>
+      </div>
     </div>
   )
 }

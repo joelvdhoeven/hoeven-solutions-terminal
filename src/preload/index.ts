@@ -28,11 +28,24 @@ const sessionAPI = {
   save: (data: unknown) => ipcRenderer.invoke('session:save', data)
 }
 
+const receiptAPI = {
+  append: (receipt: object) => ipcRenderer.invoke('receipt:append', receipt),
+  load: () => ipcRenderer.invoke('receipt:load')
+}
+
+const windowAPI = {
+  minimize: () => ipcRenderer.send('window:minimize'),
+  maximize: () => ipcRenderer.send('window:maximize'),
+  close: () => ipcRenderer.send('window:close')
+}
+
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('terminal', terminalAPI)
     contextBridge.exposeInMainWorld('session', sessionAPI)
+    contextBridge.exposeInMainWorld('receipt', receiptAPI)
+    contextBridge.exposeInMainWorld('windowControls', windowAPI)
   } catch (error) {
     console.error(error)
   }
@@ -43,4 +56,8 @@ if (process.contextIsolated) {
   window.terminal = terminalAPI
   // @ts-ignore
   window.session = sessionAPI
+  // @ts-ignore
+  window.receipt = receiptAPI
+  // @ts-ignore
+  window.windowControls = windowAPI
 }

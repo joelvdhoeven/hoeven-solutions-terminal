@@ -28,10 +28,46 @@ type SessionAPI = {
   save: (data: SessionData) => Promise<void>
 }
 
+export type Dispatch = {
+  id: string
+  title: string
+  instructions: string
+  targetTerminalId: string
+  status: 'pending' | 'active' | 'completed' | 'failed' | 'rejected'
+  createdAt: string
+  startedAt?: string
+  completedAt?: string
+  exitCode?: number
+}
+
+export type Receipt = {
+  id: string
+  timestamp: string
+  dispatchId: string
+  terminalId: string
+  eventType: 'dispatch_sent' | 'task_complete' | 'task_failed' | 'task_rejected'
+  exitCode?: number
+  durationMs?: number
+  title: string
+}
+
+type ReceiptAPI = {
+  append: (receipt: Receipt) => Promise<void>
+  load: () => Promise<Receipt[]>
+}
+
+type WindowControlsAPI = {
+  minimize: () => void
+  maximize: () => void
+  close: () => void
+}
+
 declare global {
   interface Window {
     electron: ElectronAPI
     terminal: TerminalAPI
     session: SessionAPI
+    receipt: ReceiptAPI
+    windowControls: WindowControlsAPI
   }
 }

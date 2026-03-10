@@ -6,10 +6,13 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { useTheme } from '../ThemeContext'
 
+type TerminalStatus = 'idle' | 'running' | 'done' | 'error'
+
 interface TerminalProps {
   id: string
   cwd: string
   isActive: boolean
+  onStatusChange?: (status: TerminalStatus) => void
 }
 
 interface CommandBlock {
@@ -20,7 +23,7 @@ interface CommandBlock {
 }
 
 
-export function Terminal({ id, cwd, isActive }: TerminalProps): React.JSX.Element {
+export function Terminal({ id, cwd, isActive, onStatusChange }: TerminalProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<XTerm | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -35,6 +38,8 @@ export function Terminal({ id, cwd, isActive }: TerminalProps): React.JSX.Elemen
   const [showSearch, setShowSearch] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const hadCommandRef = useRef(false)
+  const isRunningRef = useRef(false)
 
   const updateBlocks = useCallback((updater: (prev: CommandBlock[]) => CommandBlock[]) => {
     blocksRef.current = updater(blocksRef.current)
@@ -65,17 +70,80 @@ export function Terminal({ id, cwd, isActive }: TerminalProps): React.JSX.Elemen
     xterm.open(containerRef.current)
     fitAddon.fit()
 
+    // Reposition xterm's internal textarea so voice dictation tools (e.g. Wispr)
+    // can detect it as an active text field. By default xterm hides it at left:-9999em.
+    if (xterm.textarea) {
+      Object.assign(xterm.textarea.style, {
+        position: 'absolute',
+        left: '0',
+        top: '0',
+        width: '100%',
+        height: '100%',
+        opacity: '0',
+        zIndex: '1',
+        pointerEvents: 'none'
+      })
+      // Intercept paste in capture phase (before xterm's own paste listener) so
+      // that paste events — including those from Wispr / clipboard tools — are
+      // handled exactly once. Without this, Ctrl+V triggers both our keydown
+      // handler AND xterm's paste handler → double input.
+      xterm.textarea.addEventListener('paste', (e) => {
+        e.stopImmediatePropagation()
+        e.preventDefault() // prevent browser from also inserting into textarea (would cause double-write)
+        const text = e.clipboardData?.getData('text')
+        if (text) window.terminal.write(id, text)
+      }, true)
+    }
+
     xtermRef.current = xterm
     fitAddonRef.current = fitAddon
     searchAddonRef.current = searchAddon
 
-    // Ctrl+F: open search overlay (only when terminal is focused)
+    // Keyboard shortcuts
     xterm.attachCustomKeyEventHandler((e: KeyboardEvent) => {
-      if (e.type === 'keydown' && e.ctrlKey && e.key === 'f') {
+      if (e.type !== 'keydown') return true
+
+      // Ctrl+F: open search overlay
+      if (e.ctrlKey && e.key === 'f') {
         e.preventDefault()
         setShowSearch(true)
         return false
       }
+
+      // Ctrl+C: copy selection if text is selected, otherwise pass through (SIGINT)
+      if (e.ctrlKey && e.key === 'c') {
+        const selection = xterm.getSelection()
+        if (selection) {
+          navigator.clipboard.writeText(selection)
+          return false
+        }
+        return true
+      }
+
+      // Ctrl+V: handled by the textarea paste event listener (capture phase)
+      // to avoid double-paste. Just suppress xterm's built-in Ctrl+V → \x16.
+      if (e.ctrlKey && e.key === 'v') {
+        return false
+      }
+
+      // Ctrl+A: select all
+      if (e.ctrlKey && e.key === 'a') {
+        xterm.selectAll()
+        return false
+      }
+
+      // Shift+Enter: insert literal newline without executing (readline quoted-insert)
+      if (e.shiftKey && e.key === 'Enter') {
+        window.terminal.write(id, '\x16\x0a')
+        // PSReadLine may shrink the scroll region on redraw — reset it, but only
+        // when NOT inside a running command (e.g. Claude Code TUI), otherwise
+        // we'd corrupt the TUI's scroll region layout.
+        if (!isRunningRef.current) {
+          setTimeout(() => xterm.write('\x1b[r'), 150)
+        }
+        return false
+      }
+
       return true
     })
 
@@ -84,8 +152,18 @@ export function Terminal({ id, cwd, isActive }: TerminalProps): React.JSX.Elemen
       const type = data.split(';')[0]
       const buf = xterm.buffer.active
 
-      if (type === 'A') {
-        // Prompt start — begin new block
+      if (type === 'B') {
+        // Command about to execute (Enter pressed at shell prompt)
+        isRunningRef.current = true
+        onStatusChange?.('running')
+      } else if (type === 'A') {
+        // Prompt ready — if a command just ran, reset scroll region now (safe: TUI is gone)
+        if (hadCommandRef.current) {
+          hadCommandRef.current = false
+          xterm.write('\x1b[r')
+        }
+        onStatusChange?.('idle')
+        // Begin new block
         const line = buf.baseY + buf.cursorY
         const block: CommandBlock = {
           id: blockIdRef.current++,
@@ -96,8 +174,11 @@ export function Terminal({ id, cwd, isActive }: TerminalProps): React.JSX.Elemen
         currentBlockRef.current = block
         updateBlocks((prev) => [...prev, block])
       } else if (type === 'D') {
-        // Command done
+        // Command done — mark that a command ran so A can reset scroll region
+        hadCommandRef.current = true
+        isRunningRef.current = false
         const exitCode = parseInt(data.split(';')[1] ?? '0') || 0
+        onStatusChange?.(exitCode === 0 ? 'done' : 'error')
         const line = buf.baseY + buf.cursorY
         if (currentBlockRef.current) {
           const id = currentBlockRef.current.id
@@ -118,6 +199,13 @@ export function Terminal({ id, cwd, isActive }: TerminalProps): React.JSX.Elemen
         xterm.writeln('\r\n\x1b[90m[Process exited]\x1b[0m')
       })
       cleanupRef.current.push(unsubData, unsubExit)
+      // Trigger resize so pty redraws its output after HMR reconnect
+      setTimeout(() => {
+        if (fitAddonRef.current && xtermRef.current) {
+          fitAddon.fit()
+          window.terminal.resize(id, xterm.cols, xterm.rows)
+        }
+      }, 150)
     })
 
     xterm.onData((data) => {
@@ -143,6 +231,8 @@ export function Terminal({ id, cwd, isActive }: TerminalProps): React.JSX.Elemen
       xterm.dispose()
       blocksRef.current = []
       setBlocks([])
+      hadCommandRef.current = false
+      isRunningRef.current = false
     }
   }, [id, cwd])
 

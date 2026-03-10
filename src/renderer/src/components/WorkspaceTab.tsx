@@ -7,6 +7,7 @@ interface Workspace {
   name: string
   cwd: string
   color: string
+  note?: string
 }
 
 interface WorkspaceTabProps {
@@ -16,6 +17,7 @@ interface WorkspaceTabProps {
   onAdd: (cols: number, rows: number) => void
   onClose: (id: string) => void
   onRename: (id: string, name: string) => void
+  onSetNote: (id: string, note: string) => void
 }
 
 interface GridPos { top: number; right: number }
@@ -87,13 +89,116 @@ function TemplateGrid({
   )
 }
 
+interface NotePopoverProps {
+  ws: Workspace
+  anchorRect: DOMRect
+  onSave: (note: string) => void
+  onClose: () => void
+}
+
+function NotePopover({ ws, anchorRect, onSave, onClose }: NotePopoverProps): React.JSX.Element {
+  const { theme } = useTheme()
+  const [value, setValue] = useState(ws.note ?? '')
+  const ref = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    textareaRef.current?.focus()
+  }, [])
+
+  useEffect(() => {
+    const handler = (e: MouseEvent): void => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        onSave(value)
+        onClose()
+      }
+    }
+    const keyHandler = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') { onSave(value); onClose() }
+    }
+    document.addEventListener('mousedown', handler)
+    document.addEventListener('keydown', keyHandler)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      document.removeEventListener('keydown', keyHandler)
+    }
+  }, [value, onSave, onClose])
+
+  return createPortal(
+    <div
+      ref={ref}
+      style={{
+        position: 'fixed',
+        top: anchorRect.bottom + 4,
+        left: anchorRect.left,
+        background: theme.headerBg,
+        border: `1px solid ${theme.accentColor}`,
+        borderRadius: '6px',
+        padding: '10px',
+        zIndex: 9999,
+        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+        width: '280px'
+      }}
+    >
+      <div style={{ color: theme.mutedText, fontSize: '10px', marginBottom: '6px', letterSpacing: '0.05em' }}>
+        NOTE FOR <span style={{ color: theme.textColor }}>{ws.name}</span>
+      </div>
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="Leave a note for your next session…"
+        rows={4}
+        style={{
+          width: '100%',
+          background: theme.background,
+          border: `1px solid ${theme.borderColor}`,
+          borderRadius: '4px',
+          color: theme.textColor,
+          fontSize: '12px',
+          padding: '6px 8px',
+          resize: 'vertical',
+          outline: 'none',
+          fontFamily: 'inherit',
+          lineHeight: 1.5
+        }}
+      />
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '6px' }}>
+        {value && (
+          <button
+            onClick={() => { setValue(''); onSave(''); onClose() }}
+            style={{
+              background: 'none', border: 'none', color: theme.mutedText,
+              cursor: 'pointer', fontSize: '11px', padding: '3px 8px', borderRadius: '3px'
+            }}
+          >
+            Clear
+          </button>
+        )}
+        <button
+          onClick={() => { onSave(value); onClose() }}
+          style={{
+            background: theme.accentColor, border: 'none', color: theme.background,
+            cursor: 'pointer', fontSize: '11px', padding: '3px 10px',
+            borderRadius: '3px', fontWeight: 600
+          }}
+        >
+          Save
+        </button>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 export function WorkspaceTab({
   workspaces,
   activeId,
   onSelect,
   onAdd,
   onClose,
-  onRename
+  onRename,
+  onSetNote
 }: WorkspaceTabProps): React.JSX.Element {
   const { theme } = useTheme()
   const [showGrid, setShowGrid] = useState(false)
@@ -102,6 +207,7 @@ export function WorkspaceTab({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const editInputRef = useRef<HTMLInputElement>(null)
+  const [noteAnchor, setNoteAnchor] = useState<{ ws: Workspace; rect: DOMRect } | null>(null)
 
   useEffect(() => {
     if (editingId && editInputRef.current) editInputRef.current.select()
@@ -233,6 +339,23 @@ export function WorkspaceTab({
               ) : (
                 <span>{ws.name}</span>
               )}
+              {!isEditing && (
+                <button
+                  className="hs-btn"
+                  title={ws.note ? ws.note : 'Add note'}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                    setNoteAnchor({ ws, rect })
+                  }}
+                  style={{
+                    background: 'none', border: 'none',
+                    color: ws.note ? theme.accentColor : theme.mutedText,
+                    cursor: 'pointer', fontSize: '10px', padding: '1px 3px',
+                    lineHeight: 1, opacity: ws.note ? 1 : 0.45, borderRadius: '3px'
+                  }}
+                >✎</button>
+              )}
               {workspaces.length > 1 && !isEditing && (
                 <button
                   className="hs-btn hs-btn-close"
@@ -306,6 +429,15 @@ export function WorkspaceTab({
           pos={gridPos}
           onSelect={(cols, rows) => onAdd(cols, rows)}
           onClose={() => setShowGrid(false)}
+        />
+      )}
+
+      {noteAnchor && (
+        <NotePopover
+          ws={noteAnchor.ws}
+          anchorRect={noteAnchor.rect}
+          onSave={(note) => onSetNote(noteAnchor.ws.id, note)}
+          onClose={() => setNoteAnchor(null)}
         />
       )}
     </div>

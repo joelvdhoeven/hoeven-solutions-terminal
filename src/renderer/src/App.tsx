@@ -3,6 +3,7 @@ import { WorkspaceTab } from './components/WorkspaceTab'
 import { PaneLayout } from './components/PaneLayout'
 import { StatusBar } from './components/StatusBar'
 import { SettingsModal } from './components/SettingsModal'
+import { SessionNotesModal } from './components/SessionNotesModal'
 import { useTheme } from './ThemeContext'
 import { useShortcuts, matchesShortcut } from './ShortcutsContext'
 
@@ -11,6 +12,7 @@ interface Workspace {
   name: string
   cwd: string
   color: string
+  note?: string
   templateCols?: number
   templateRows?: number
 }
@@ -44,6 +46,11 @@ function App({ initialSession }: AppProps): React.JSX.Element {
   const { theme, themeId } = useTheme()
   const { shortcuts, getShortcut } = useShortcuts()
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [showSessionNotes, setShowSessionNotes] = useState(() => {
+    // Show welcome-back modal on startup if any workspace has a note
+    if (!initialSession?.workspaces) return false
+    return initialSession.workspaces.some((w: any) => w.note?.trim())
+  })
 
   const [workspaces, setWorkspaces] = useState<Workspace[]>(() => {
     if (initialSession?.workspaces && initialSession.workspaces.length > 0) {
@@ -85,6 +92,10 @@ function App({ initialSession }: AppProps): React.JSX.Element {
 
   const renameWorkspace = useCallback((id: string, name: string) => {
     setWorkspaces((prev) => prev.map((w) => (w.id === id ? { ...w, name } : w)))
+  }, [])
+
+  const setWorkspaceNote = useCallback((id: string, note: string) => {
+    setWorkspaces((prev) => prev.map((w) => (w.id === id ? { ...w, note } : w)))
   }, [])
 
   useEffect(() => {
@@ -140,6 +151,7 @@ function App({ initialSession }: AppProps): React.JSX.Element {
         onAdd={addWorkspace}
         onClose={closeWorkspace}
         onRename={renameWorkspace}
+        onSetNote={setWorkspaceNote}
       />
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         {workspaces.map((ws) => (
@@ -157,6 +169,12 @@ function App({ initialSession }: AppProps): React.JSX.Element {
         onOpenSettings={() => setIsSettingsOpen(true)}
       />
       {isSettingsOpen && <SettingsModal onClose={() => setIsSettingsOpen(false)} />}
+      {showSessionNotes && (
+        <SessionNotesModal
+          workspaces={workspaces.filter((w) => w.note?.trim())}
+          onClose={() => setShowSessionNotes(false)}
+        />
+      )}
     </div>
   )
 }
